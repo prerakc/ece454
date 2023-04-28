@@ -1,0 +1,7 @@
+File '/homes/c/chaud496/ece454/lab1/ECE454-Lab2/implementation_reference.c'
+Lines executed:99.35% of 153
+Branches executed:100.00% of 82
+Taken at least once:97.56% of 82
+Calls executed:97.30% of 37
+Creating 'implementation_reference.c.gcov'
+

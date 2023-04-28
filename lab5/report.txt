@@ -1,0 +1,30 @@
+Optimization of the util.h file.
+   1) Since the board wraps around, the parameter x of the mod function will either be -1, m or some value in the range [0, m-1].
+      Thus, we do not need to compute the modulus as we can hard code the results.
+      Each of the above cases will return m-1, 0, and x respectively.
+   2) The conditional logic in the alivep function can be simplified.
+      If the neighbour count is 3, then it does not matter if the cell is currently alive or dead as it will be alive in the next generation.
+      The state only has to be checked if the neighbour count is 2 to verify that the cell is currently alive.
+
+First iteration (lifepar_v1.c):
+   1) LICM: moved computations of inorth and isouth outside of innermost for loop
+   2) Parallelized board computation by distributing next generation board computation across all cores.
+   3) Split board into tiles (i.e. each thread is responsible for 1 tile) for better cache optimization.
+   4) Neighbour's states are cached while iterating down a row or column to avoid repeated memory accesses.
+
+Second iteration (lifepar_v2.c): -> submitted version
+   1) The original algorithm is slow because it requires 8 memory operations (1 for each neighbour without caching) when determing whether a particular cell should be alive or dead.
+      Since each board element is represented using a char, and only 1 bit is needed to hold the cell's state, the remaining 7 bits can be leveraged to hold the cell's neighbour count.
+      This enables simply looking up the cell's neighbour count as opposed to recomputing it every time.
+      Now, the lower 4 bits are used to hold the neighbour count and the upper 4 bits to hold whether the cell is alive or dead.
+      Then, when spawning or killing a cell, instead of updating that particular board element to 0 or 1, increment/decrement the neighbour count of its adjacent cells and set the state bit accordingly.
+      Although, there is overhead in having to maintain this information for each cell, it reduces the overall time complexity because cells infrequently change state.
+   2) Tiling is still used to allocate, for the most part (see next section for more details), mutually exclusive board regions to each thread for independent cell generation update computations.
+   3) Unlike the first iteration, the second iteration requires the use of locks for synchronization because thread regions are overlapping at their edges (i.e. neighbouring cells in adjacent regions can modify one another).
+      My first attempt to sovle this involved creating a global lock every time a thread was going to increment/decrement adjacent cells' neighbour counts.
+      However, this effectively serialized the application which performed slower than the sequential baseline due to synchronization overhead.
+      My second attempt was to create element-wise locks for each cell.
+      When a thread was going to modify a particular cell, it would attempt to retrieve its corresponding lock before proceeding.
+      This was better than the first attempt but was still slower than my first iteration.
+      Finally, I deduced that locks are only needed for the first and last two rows and columns of a tiled region because these cells are adjacent to other regions and can be modified by their threads.
+      All other cells inside a particular region are only modified by its corresponding thread so there are no synchronization concerns.

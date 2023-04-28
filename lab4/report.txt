@@ -1,0 +1,148 @@
+Prerak Chaudhari
+1005114760
+
+ECE454
+Homework 4: Pthreads and Synchronization
+Lab Report
+
+Q1. Why is it important to #ifdef out methods and datastructures that aren’t used for different versions of randtrack? 
+
+#ifdef is a preprocessor directive used for conditional compilation.
+If it is not used, then each version of randtrack will contain methods and data structures for other versions that it does not need.
+This increases the program size and can cause incorrect method calls and data accesses.
+Additionally, readers may have trouble understanding the code.
+
+Q2. Can you implement this without modifying the hash class, or without knowing its internal implementation?
+
+Yes.
+Since the hash table is initialized to have 2^14 keys, we can create a mutex lock for each possible key.
+Then, when attempting to modify the list at a particular key, we can use its corresponding mutex lock.
+
+Q3. Can you properly implement this solely by modifying the hash class methods lookup and insert? Explain.
+
+No.
+While adding list locks to the lookup and insert methods would make those operations atomic, the code snippet shown below would still not be atomic, leading to race conditions.
+It is possible that after a thread determines that the given sample is not in the hash table, the CPU will context switch to another thread that also looks up the same sample and inserts it into the list.
+When the first thread resumes again, it will insert a duplicate second entry into the list.
+
+The code responsible for mutating the list at a particular key is given below:
+
+    // if this sample has not been counted before
+    if (!(s = h.lookup(key))){
+        // insert a new element for it into the hash table
+        s = new sample(key);
+        h.insert(s);
+    }
+
+    // increment the count for the sample
+    s->count++;
+
+Q4. Can you implement this by adding to the hash class a new function lookup and insert if absent? Explain.
+
+Yes.
+A function can be created that atomically looks up a given sample and inserts it into the list if not present.
+This would solve the issue of race conditions as described in the previous question.
+
+Q5. Can you implement it by adding new methods to the hash class lock list and unlock list? Explain. Implement the simplest solution above that works (or a better one if you can think of one).
+
+Yes.
+We can create methods that lock and unlock the list at a given key by using a pointer to the corresponding mutex lock.
+These mutex locks would be initialized, stored, and managed internally within the hash table.
+
+Q7. What are the pros and cons of this approach?
+
+Pros:
+- Since each thread has its own hash table, there are no race conditions
+- No multithreading synchronization overhead as there is no need for mutual exclusion
+
+Cons:
+- Higher space complexity because each thread has its own hash table
+- Increased time complexity due to hash table reduction after stream processing is finished
+
+Q8. For samples to skip set to 50, what is the overhead for each parallelization approach? Report this as the runtime of the parallel version with one thread divided by the runtime of the single-threaded version.
+
++----------------------------------------+
+| Elapsed time of experiments in seconds |
++------------------+---------------------+
+|  Experiment type |  Number of threads  |
+|                  +-------+------+------+
+|                  |   1   |   2  |   4  |
++------------------+-------+------+------+
+|     randtrack    |         6.72        |
++------------------+-------+------+------+
+|    global_lock   |  6.77 | 4.43 | 4.88 |
++------------------+-------+------+------+
+|     list_lock    |  7.05 | 3.76 | 1.98 |
++------------------+-------+------+------+
+|   element_lock   |  7.34 | 3.98 | 2.11 |
++------------------+-------+------+------+
+|     reduction    |  6.71 | 3.39 | 1.69 |
++------------------+-------+------+------+
+
++----------------------+----------------+
+| Parallelization Type | Overhead Ratio |
++----------------------+----------------+
+| global_lock          | 1.0083358      |
++----------------------+----------------+
+| list_lock            | 1.0488241      |
++----------------------+----------------+
+| element_lock         | 1.0919917      |
++----------------------+----------------+
+| reduction            | 0.9985115      |
++----------------------+----------------+
+
+Q9. How does each approach perform as the number of threads increases? If performance gets worse for a certain case, explain why that may have happened.
+
+With the exception of the global lock, each approach performs better as the number of threads increase because the total workload is parallelized.
+Doubling the thread count approximately reduces the run-time by a bit under 2; though it is not exactly linear due to multithreading parallelization and synchronization overhead.
+For the global lock, increasing the thread count to 2 did improve performance, but increasing it to 4 caused a regression.
+This is likely because the global lock forced more threads to wait to mutate the shared hash table and this added overhead was not offset by the parallelization benefits.
+
+Q10. Repeat the data collection above with samples to skip set to 100 and give the table. How does this change impact the results compared with when set to 50? Why?
+
++----------------------------------------+
+| Elapsed time of experiments in seconds |
++------------------+---------------------+
+|  Experiment type |  Number of threads  |
+|                  +-------+------+------+
+|                  |   1   |   2  |   4  |
++------------------+-------+------+------+
+|     randtrack    |        13.18        |
++------------------+-------+------+------+
+|    global_lock   | 13.13 | 7.40 | 4.94 |
++------------------+-------+------+------+
+|     list_lock    | 13.44 | 6.99 | 3.61 |
++------------------+-------+------+------+
+|   element_lock   | 13.70 | 7.14 | 3.67 |
++------------------+-------+------+------+
+|     reduction    | 13.14 | 6.67 | 3.31 |
++------------------+-------+------+------+
+
++----------------------+----------------+
+| Parallelization Type | Overhead Ratio |
++----------------------+----------------+
+| global_lock          | 0.9966611      |
++----------------------+----------------+
+| list_lock            | 1.0200334      |
++----------------------+----------------+
+| element_lock         | 1.039915       |
++----------------------+----------------+
+| reduction            | 0.9972682      |
++----------------------+----------------+
+
+Increasing the number of samples to skip causes the stream processing to spend more time "idling" while generating a new number.
+Since this idle time is approximately doubled per stream element when increasing the number of samples to skip from 50 to 100, the total run-time is also approximately doubled regardless of thread count.
+The parallelization performance improvements remained roughly the same, but this time there was no regression for the global lock.
+Additionally, the parallelization overheads slightly decreased.
+This can be explained by parallelization providing more benefits because each thread's workload now has more idle time outside the critical section.
+Thus, threads are not holding locks as often, reducing synchronization overhead from waiting times.
+
+Q11. Which approach should OptsRus ship? Keep in mind that some customers might be using multicores with more than 4 cores, while others might have only one or two cores.
+
+Firstly, the global lock should not considered because better parallelized run-times can be achieved with finer granularity.
+Secondly, the element lock should not be considered because it is too granular and performed worse than other approaches with lower overhead.
+Now, the decision is between list lock and reduction.
+Reduction had faster run-times and a smaller overhead.
+However, it had an increased theoretical space and time complexity due to per-thread hash tables that had to be merged after stream processing completed.
+This could be an issue for machines with limited memory as the number of cores and stream elements increases.
+Therefore, I recommend shipping the list lock approach.

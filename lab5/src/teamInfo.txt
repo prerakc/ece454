@@ -1,0 +1,4 @@
+teamName: malloc-enjoyer
+student1_fullName: Prerak Chaudhari
+student1_studentNumber: 1005114760
+student1_email: prerak.chaudhari@mail.utoronto.ca
